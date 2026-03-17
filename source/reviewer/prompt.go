@@ -31,7 +31,13 @@ Return your findings as a JSON array with the following structure:
     "line": 42,
     "severity": "error",
     "comment": "Description of the issue and suggested fix"
-  }
+  },
+	{
+    "file": "path/to/file.ext",
+    "line": 27,
+    "severity": "warning",
+    "comment": "Description of the issue and suggested fix"
+  }, // etc, until all issues are addressed
 ]
 ` + "```\n" + `
 Severity levels:
