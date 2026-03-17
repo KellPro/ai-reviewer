@@ -43,7 +43,7 @@ The tool requires an LLM API key and Bitbucket credentials. You can provide thes
 | `AI_REVIEWER_MODEL` | The LLM model to use. | `grok-code-fast-1` |
 | `AI_REVIEWER_PROMPT_EXTRA` | Additional context or instructions to append to the system prompt. | |
 | `BITBUCKET_EMAIL` | Your Atlassian email address (for API Token auth). | |
-| `BITBUCKET_TOKEN` | A Bitbucket API Token (or legacy App Password). | |
+| `BITBUCKET_TOKEN` | A Bitbucket API Token. | |
 
 
 ### Authentication Methods
@@ -84,9 +84,8 @@ Usage:
 
 Flags:
       --api-key string           API key for the LLM (env: AI_REVIEWER_API_KEY)
-      --bb-email string          Atlassian email address (for API Token) or Bitbucket username (env: BITBUCKET_EMAIL / BITBUCKET_USERNAME)
-
-      --bb-token string          Bitbucket API Token or legacy App Password (env: BITBUCKET_TOKEN / BITBUCKET_APP_PASSWORD)
+      --bb-email string          Atlassian email address (for API Token) (env: BITBUCKET_EMAIL)
+      --bb-token string          Bitbucket API Token (env: BITBUCKET_TOKEN)
       --dry-run                  Print findings without posting comments to Bitbucket
   -h, --help                     help for ai-reviewer
       --model string             Model name to use for review (default "grok-code-fast-1")

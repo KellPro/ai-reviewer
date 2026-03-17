@@ -14,8 +14,8 @@ type Config struct {
 	PromptExtra   string
 
 	// Bitbucket auth
-	BBEmail       string
-	BBToken       string
+	BBEmail string
+	BBToken string
 
 	// Behavior
 	Platform string // "cloud" or "server" (auto-detected from URL)
@@ -30,8 +30,8 @@ func DefaultConfig() *Config {
 		Model:         envOrDefault("AI_REVIEWER_MODEL", "grok-code-fast-1"),
 		APIKey:        os.Getenv("AI_REVIEWER_API_KEY"),
 		PromptExtra:   os.Getenv("AI_REVIEWER_PROMPT_EXTRA"),
-		BBEmail:       envOrDefault("BITBUCKET_EMAIL", os.Getenv("BITBUCKET_USERNAME")), // Fallback for backwards compatibility
-		BBToken:       envOrDefault("BITBUCKET_TOKEN", os.Getenv("BITBUCKET_APP_PASSWORD")), // Fallback
+		BBEmail:       os.Getenv("BITBUCKET_EMAIL"),
+		BBToken:       os.Getenv("BITBUCKET_TOKEN"),
 		Platform:      "cloud",
 		Pending:       true,
 		DryRun:        false,

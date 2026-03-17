@@ -35,10 +35,14 @@ Authentication is via Bitbucket API Tokens.`,
 	flags.StringVar(&cfg.Model, "model", cfg.Model, "Model name to use for review")
 	flags.StringVar(&cfg.APIKey, "api-key", cfg.APIKey, "API key for the LLM (env: AI_REVIEWER_API_KEY)")
 	flags.StringVar(&cfg.PromptExtra, "prompt-extra", cfg.PromptExtra, "Additional review directives appended to the prompt")
-	flags.StringVar(&cfg.BBEmail, "bb-email", cfg.BBEmail, "Atlassian email address (for API Token) or Bitbucket username (env: BITBUCKET_EMAIL)")
+	flags.StringVar(&cfg.BBEmail, "bb-email", cfg.BBEmail, "Atlassian email address (for API Token) (env: BITBUCKET_EMAIL)")
 	flags.StringVar(&cfg.BBToken, "bb-token", cfg.BBToken, "Bitbucket API Token (env: BITBUCKET_TOKEN)")
 	flags.BoolVar(&cfg.Pending, "pending", cfg.Pending, "Include \"pending\": true in comment payload")
 	flags.BoolVar(&cfg.DryRun, "dry-run", cfg.DryRun, "Print findings without posting comments to Bitbucket")
+
+	// Hide sensitive defaults from help output
+	flags.Lookup("api-key").DefValue = `********`
+	flags.Lookup("bb-token").DefValue = `********`
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
