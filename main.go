@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,28 +14,57 @@ import (
 	"github.com/KellPro/ai-reviewer/source/reviewer"
 )
 
+// shorthandRe matches "repo/123" (a repo slug and a PR number separated by a slash).
+var shorthandRe = regexp.MustCompile(`^([a-zA-Z0-9._-]+)/(\d+)$`)
+
 func main() {
 	cfg := config.DefaultConfig()
 
 	rootCmd := &cobra.Command{
-		Use:   "ai-reviewer <pr-url>",
+		Use:   "ai-reviewer <pr-url | repo/pr-number>",
 		Short: "AI-powered Bitbucket PR code reviewer",
 		Long: `ai-reviewer fetches the diff from a Bitbucket Cloud pull request,
 sends it to an OpenAI-compatible LLM for code review, and posts
 the findings as inline comments on the PR in review mode.
 
-Authentication is via Bitbucket API Tokens.`,
+Authentication is via Bitbucket API Tokens.
+
+You can use a full PR URL or a shorthand "repo/pr-number" when
+a default workspace has been configured via 'ai-reviewer init'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cfg, args[0])
+			prArg := args[0]
+
+			// Resolve shorthand "repo/123" → full URL
+			prURL, err := resolvePRArg(prArg, cfg.BBWorkspace)
+			if err != nil {
+				return err
+			}
+
+			return run(cfg, prURL)
 		},
 	}
+
+	// Init subcommand
+	initCmd := &cobra.Command{
+		Use:   "init",
+		Short: "Configure ai-reviewer defaults and credentials",
+		Long: `Interactively configure ai-reviewer. Non-sensitive settings are
+stored in ~/.config/ai-reviewer.json. Secrets (API key, Bitbucket
+token) are stored in your system keyring.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return config.RunInit()
+		},
+	}
+	rootCmd.AddCommand(initCmd)
 
 	flags := rootCmd.Flags()
 	flags.StringVar(&cfg.ModelEndpoint, "model-endpoint", cfg.ModelEndpoint, "OpenAI-compatible API base URL")
 	flags.StringVar(&cfg.Model, "model", cfg.Model, "Model name to use for review")
 	flags.StringVar(&cfg.APIKey, "api-key", cfg.APIKey, "API key for the LLM (env: AI_REVIEWER_API_KEY)")
 	flags.StringVar(&cfg.PromptExtra, "prompt-extra", cfg.PromptExtra, "Additional review directives appended to the prompt")
+	flags.StringVar(&cfg.BBWorkspace, "bb-workspace", cfg.BBWorkspace, "Default Bitbucket workspace (for shorthand repo/PR#)")
 	flags.StringVar(&cfg.BBEmail, "bb-email", cfg.BBEmail, "Atlassian email address (for API Token) (env: BITBUCKET_EMAIL)")
 	flags.StringVar(&cfg.BBToken, "bb-token", cfg.BBToken, "Bitbucket API Token (env: BITBUCKET_TOKEN)")
 	flags.BoolVar(&cfg.Pending, "pending", cfg.Pending, "Include \"pending\": true in comment payload")
@@ -47,6 +77,27 @@ Authentication is via Bitbucket API Tokens.`,
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// resolvePRArg expands a shorthand "repo/123" to a full Bitbucket PR URL,
+// or returns the argument as-is if it's already a URL.
+func resolvePRArg(arg, defaultWorkspace string) (string, error) {
+	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+		return arg, nil
+	}
+
+	matches := shorthandRe.FindStringSubmatch(arg)
+	if matches == nil {
+		return "", fmt.Errorf("invalid PR reference: %q\nUse a full URL or shorthand \"repo/pr-number\" (requires --bb-workspace or 'ai-reviewer init')", arg)
+	}
+
+	if defaultWorkspace == "" {
+		return "", fmt.Errorf("shorthand %q requires a default workspace\nSet it with --bb-workspace, BITBUCKET_WORKSPACE env var, or run 'ai-reviewer init'", arg)
+	}
+
+	repo := matches[1]
+	prNum := matches[2]
+	return fmt.Sprintf("https://bitbucket.org/%s/%s/pull-requests/%s", defaultWorkspace, repo, prNum), nil
 }
 
 func run(cfg *config.Config, prURL string) error {
