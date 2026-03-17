@@ -22,30 +22,34 @@ IMPORTANT RULES:
 2. Be concise and actionable. Each comment should clearly explain the issue and suggest a fix.
 3. Do NOT comment on style-only issues like formatting, naming conventions, or whitespace unless they cause bugs.
 4. Do NOT comment on deleted lines.
-5. If you find no issues, return an empty JSON array: []
+5. If you find no issues, return a JSON object with an empty array: {"issues": []}
 
-Return your findings as a JSON array with the following structure:
-` + "```json\n" + `[
-  {
-    "file": "path/to/file.ext",
-    "line": 42,
-    "severity": "error",
-    "comment": "Description of the issue and suggested fix"
-  },
-	{
-    "file": "path/to/file.ext",
-    "line": 27,
-    "severity": "warning",
-    "comment": "Description of the issue and suggested fix"
-  }, // etc, until all issues are addressed
-]
-` + "```\n" + `
+Return your findings as a valid JSON object containing an "issues" array containing all the issues found with the following structure.
+CRITICAL: Your output MUST start with '{' and end with '}'. Do not use markdown code blocks.
+
+{
+  "issues": [
+    {
+      "file": "path/to/file.ext",
+      "line": 42,
+      "severity": "error",
+      "comment": "Description of the issue and suggested fix"
+    },
+    {
+      "file": "path/to/file.ext",
+      "line": 27,
+      "severity": "warning",
+      "comment": "Description of another issue and suggested fix"
+    }
+  ]
+}
+
 Severity levels:
 - "error": Bugs, security vulnerabilities, data loss risks
 - "warning": Potential issues, race conditions, missing error handling
 - "info": Suggestions for improvement, minor issues
 
-Return ONLY the JSON array. No other text, explanation, or markdown formatting around it.`)
+Return ONLY the raw JSON object with an "issues" array listing all issues with the code. No preamble, no explanation, and NO markdown ticks`)
 
 	if promptExtra != "" {
 		sb.WriteString("\n\nADDITIONAL REVIEW DIRECTIVES:\n")

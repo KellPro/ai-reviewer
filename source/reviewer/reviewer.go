@@ -12,10 +12,10 @@ import (
 
 // chatCompletionRequest is the OpenAI-compatible request body.
 type chatCompletionRequest struct {
-	Model       string              `json:"model"`
-	Messages    []chatMessage       `json:"messages"`
-	Temperature float64             `json:"temperature"`
-	ResponseFormat *responseFormat  `json:"response_format,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []chatMessage   `json:"messages"`
+	Temperature    float64         `json:"temperature"`
+	ResponseFormat *responseFormat `json:"response_format,omitempty"`
 }
 
 type chatMessage struct {
@@ -42,6 +42,10 @@ type chatCompletionResponse struct {
 	} `json:"usage"`
 }
 
+type AIResponse struct {
+	Issues []Finding `json:"issues"`
+}
+
 // ReviewDiff sends a diff to an OpenAI-compatible API for code review and returns findings.
 func ReviewDiff(endpoint, model, apiKey, diff, agentsMD, promptExtra string) ([]Finding, error) {
 	systemPrompt, userPrompt := BuildPrompt(diff, agentsMD, promptExtra)
@@ -52,7 +56,7 @@ func ReviewDiff(endpoint, model, apiKey, diff, agentsMD, promptExtra string) ([]
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-		Temperature: 0.1,
+		Temperature:    0.1,
 		ResponseFormat: &responseFormat{Type: "json_object"},
 	}
 
@@ -126,26 +130,10 @@ func parseFindings(content string) ([]Finding, error) {
 
 	content = strings.TrimSpace(content)
 
-	// Try direct array parse
-	var findings []Finding
-	if err := json.Unmarshal([]byte(content), &findings); err == nil {
-		return findings, nil
-	}
 
-	// Try single object parse (if LLM returned just one finding not in an array)
-	var singleFinding Finding
-	if err := json.Unmarshal([]byte(content), &singleFinding); err == nil && singleFinding.File != "" {
-		return []Finding{singleFinding}, nil
-	}
-
-	// Try object wrapper (e.g. {"findings": [...]} or {"results": [...]})
-	var wrapper map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(content), &wrapper); err == nil {
-		for _, v := range wrapper {
-			if err := json.Unmarshal(v, &findings); err == nil {
-				return findings, nil
-			}
-		}
+	var aiResponse AIResponse
+	if err := json.Unmarshal([]byte(content), &aiResponse); err == nil {
+		return aiResponse.Issues, nil
 	}
 
 	return nil, fmt.Errorf("could not parse LLM response as findings JSON")
