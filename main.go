@@ -129,9 +129,9 @@ func run(cfg *config.Config, prURL string) error {
 	if err != nil {
 		return fmt.Errorf("fetching PR metadata: %w", err)
 	}
-	sourceBranch := meta.Source.Branch.Name
+	sourceRef := meta.Source.Commit.Hash
 	fmt.Printf("   Title: %s\n", meta.Title)
-	fmt.Printf("   Branch: %s → %s\n", sourceBranch, meta.Destination.Branch.Name)
+	fmt.Printf("   Branch: %s → %s\n", meta.Source.Branch.Name, meta.Destination.Branch.Name)
 
 	// Fetch diff
 	fmt.Printf("📄 Fetching PR diff...\n")
@@ -157,16 +157,25 @@ func run(cfg *config.Config, prURL string) error {
 		return nil
 	}
 
-	// Attempt to fetch AGENTS.md from source branch
-	fmt.Printf("📖 Looking for AGENTS.md on branch '%s'...\n", sourceBranch)
-	agentsMD, err := bitbucket.GetFileContent(client, prInfo, sourceBranch, "AGENTS.md")
-	if err != nil {
-		fmt.Printf("   ⚠️  Could not fetch AGENTS.md: %v\n", err)
-		agentsMD = ""
-	} else if agentsMD != "" {
-		fmt.Printf("   ✅ Found AGENTS.md (%d bytes)\n", len(agentsMD))
-	} else {
-		fmt.Printf("   ℹ️  No AGENTS.md found in repository\n")
+	// Attempt to fetch AGENTS.md from source repository at the PR's source commit
+	sourceRepo := meta.Source.Repository.FullName
+	fmt.Printf("📖 Looking for AGENTS.md at commit '%s' in repo '%s'...\n", sourceRef, sourceRepo)
+	var agentsMD string
+	possibleNames := []string{"AGENTS.md", "agents.md"}
+	for _, name := range possibleNames {
+		content, err := bitbucket.GetFileContent(client, prInfo.BaseURL, sourceRepo, sourceRef, name)
+		if err != nil {
+			fmt.Printf("   ⚠️  Could not fetch %s from %s: %v\n", name, sourceRepo, err)
+			continue
+		}
+		if content != "" {
+			agentsMD = content
+			fmt.Printf("   ✅ Found %s (%d bytes)\n", name, len(agentsMD))
+			break
+		}
+	}
+	if agentsMD == "" {
+		fmt.Printf("   ℹ️  No AGENTS.md found in source repository\n")
 	}
 
 	// Send to LLM for review

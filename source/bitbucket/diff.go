@@ -65,10 +65,10 @@ func GetDiff(client *Client, pr *PRInfo) (string, error) {
 
 // GetFileContent fetches the content of a file from the repo at a specific ref (branch/commit).
 // Returns empty string and no error if the file doesn't exist (404).
-func GetFileContent(client *Client, pr *PRInfo, ref, filePath string) (string, error) {
+func GetFileContent(client *Client, baseURL, repo, ref, filePath string) (string, error) {
 	// Bitbucket Cloud src endpoint: /2.0/repositories/{workspace}/{repo}/src/{ref}/{path}
-	apiURL := fmt.Sprintf("%s/repositories/%s/%s/src/%s/%s",
-		pr.BaseURL, pr.Workspace, pr.RepoSlug,
+	apiURL := fmt.Sprintf("%s/repositories/%s/src/%s/%s",
+		baseURL, repo,
 		url.PathEscape(ref), filePath)
 
 	body, err := client.GetRaw(apiURL)

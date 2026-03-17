@@ -16,6 +16,9 @@ type PRMetadata struct {
 		Branch struct {
 			Name string `json:"name"`
 		} `json:"branch"`
+		Commit struct {
+			Hash string `json:"hash"`
+		} `json:"commit"`
 		Repository struct {
 			FullName string `json:"full_name"`
 		} `json:"repository"`
