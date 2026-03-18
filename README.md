@@ -50,7 +50,7 @@ The tool requires an LLM API key and Bitbucket credentials. You can provide thes
 |---|---|---|
 | `AI_REVIEWER_API_KEY` | Your OpenAI-compatible API key. | |
 | `AI_REVIEWER_ENDPOINT` | The LLM API base URL. | `https://api.x.ai/v1` |
-| `AI_REVIEWER_MODEL` | The LLM model to use. | `grok-code-fast-1` |
+| `AI_REVIEWER_MODEL` | The LLM model to use. | `grok-4-1-fast-reasoning` |
 | `AI_REVIEWER_PROMPT_EXTRA` | Additional context or instructions to append to the system prompt. | |
 | `BITBUCKET_WORKSPACE` | Default Bitbucket workspace for shorthand PR syntax. | |
 | `BITBUCKET_EMAIL` | Your Atlassian email address (for API Token auth). | |
@@ -117,7 +117,7 @@ Flags:
       --bb-workspace string      Default Bitbucket workspace (for shorthand repo/PR#)
       --dry-run                  Print findings without posting comments to Bitbucket
   -h, --help                     help for ai-reviewer
-      --model string             Model name to use for review (default "grok-code-fast-1")
+      --model string             Model name to use for review (default "grok-4-1-fast-reasoning")
       --model-endpoint string    OpenAI-compatible API base URL (default "https://api.x.ai/v1")
       --pending                  Include "pending": true in comment payload (default true)
       --prompt-extra string      Additional review directives appended to the prompt

@@ -38,7 +38,7 @@ func ConfigFilePath() string {
 func DefaultConfig() *Config {
 	cfg := &Config{
 		ModelEndpoint: "https://api.x.ai/v1",
-		Model:         "grok-code-fast-1",
+		Model:         "grok-4-1-fast-reasoning",
 		Platform:      "cloud",
 		Pending:       true,
 		DryRun:        false,
