@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Config holds all configuration for the ai-reviewer CLI.
 type Config struct {
 	// LLM settings
-	ModelEndpoint string `json:"model_endpoint,omitempty"`
-	Model         string `json:"model,omitempty"`
-	APIKey        string `json:"-"` // stored in keyring, never in file
-	PromptExtra   string `json:"prompt_extra,omitempty"`
+	ModelEndpoint      string `json:"model_endpoint,omitempty"`
+	Model              string `json:"model,omitempty"`
+	APIKey             string `json:"-"` // stored in keyring, never in file
+	PromptExtra        string `json:"prompt_extra,omitempty"`
+	MaxReActIterations int    `json:"max_react_iters,omitempty"`
 
 	// Bitbucket auth
 	BBWorkspace string `json:"bb_workspace,omitempty"`
@@ -39,13 +41,14 @@ func ConfigFilePath() string {
 // Precedence (later wins): defaults → config file → keyring → env vars → CLI flags.
 func DefaultConfig() *Config {
 	cfg := &Config{
-		ModelEndpoint: "https://api.x.ai/v1",
-		Model:         "grok-4-1-fast-reasoning",
-		Platform:      "cloud",
-		Pending:       true,
-		DryRun:        false,
-		Path:          ".",
-		Switch:        false,
+		ModelEndpoint:      "https://api.x.ai/v1",
+		Model:              "grok-4-1-fast-reasoning",
+		Platform:           "cloud",
+		Pending:            true,
+		DryRun:             false,
+		Path:               ".",
+		Switch:             false,
+		MaxReActIterations: 10,
 	}
 
 	// Layer: config file
@@ -73,6 +76,13 @@ func DefaultConfig() *Config {
 	}
 	if v := os.Getenv("AI_REVIEWER_PROMPT_EXTRA"); v != "" {
 		cfg.PromptExtra = v
+	}
+	if v := os.Getenv("AI_REVIEWER_MAX_REACT_ITERS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			cfg.MaxReActIterations = parsed
+		} else {
+			cfg.MaxReActIterations = 10
+		}
 	}
 	if v := os.Getenv("BITBUCKET_WORKSPACE"); v != "" {
 		cfg.BBWorkspace = v
@@ -135,6 +145,9 @@ func mergeConfigFile(base, file *Config) {
 	}
 	if file.PromptExtra != "" {
 		base.PromptExtra = file.PromptExtra
+	}
+	if file.MaxReActIterations != 0 {
+		base.MaxReActIterations = file.MaxReActIterations
 	}
 	if file.BBWorkspace != "" {
 		base.BBWorkspace = file.BBWorkspace

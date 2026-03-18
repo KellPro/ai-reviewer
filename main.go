@@ -82,6 +82,7 @@ token) are stored in your system keyring.`,
 	flags.StringVar(&cfg.BBToken, "bb-token", cfg.BBToken, "Bitbucket API Token (env: BITBUCKET_TOKEN)")
 	flags.StringVar(&cfg.Path, "path", cfg.Path, "Path to local repository (default: .)")
 	flags.BoolVar(&cfg.Switch, "switch", cfg.Switch, "Checkout and pull PR branch locally before review (requires --path)")
+	flags.IntVar(&cfg.MaxReActIterations, "max-react-iters", cfg.MaxReActIterations, "Maximum iterations for the agentic ReAct loop")
 	flags.BoolVar(&cfg.Pending, "pending", cfg.Pending, "Include \"pending\": true in comment payload")
 	flags.BoolVar(&cfg.DryRun, "dry-run", cfg.DryRun, "Print findings without posting comments to Bitbucket")
 
@@ -217,7 +218,7 @@ func run(cfg *config.Config, prURL string) error {
 	var agentsMD string
 	possibleNames := []string{"AGENTS.md", "agents.md"}
 	for _, name := range possibleNames {
-		content, err := ctx.GetFileContent(name)
+		content, err := ctx.ReadRepoFile(name)
 		if err == nil && content != "" {
 			agentsMD = content
 			fmt.Printf("   ✅ Found %s (%d bytes)\n", name, len(agentsMD))
@@ -231,8 +232,8 @@ func run(cfg *config.Config, prURL string) error {
 	}
 
 	// Send to LLM for review
-	fmt.Printf("🤖 Sending diff to %s (model: %s)...\n", cfg.ModelEndpoint, cfg.Model)
-	findings, err := reviewer.ReviewDiff(cfg.ModelEndpoint, cfg.Model, cfg.APIKey, diff, agentsMD, cfg.PromptExtra)
+	fmt.Printf("🤖 Sending diff to %s (model: %s) with max %d iterations...\n", cfg.ModelEndpoint, cfg.Model, cfg.MaxReActIterations)
+	findings, err := reviewer.ReviewDiff(ctx, cfg.ModelEndpoint, cfg.Model, cfg.APIKey, cfg.MaxReActIterations, diff, agentsMD, cfg.PromptExtra)
 	if err != nil {
 		return fmt.Errorf("LLM review failed: %w", err)
 	}

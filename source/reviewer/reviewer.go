@@ -1,45 +1,19 @@
 package reviewer
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
+
+	"github.com/sashabaranov/go-openai"
+	"github.com/sashabaranov/go-openai/jsonschema"
 )
 
-// chatCompletionRequest is the OpenAI-compatible request body.
-type chatCompletionRequest struct {
-	Model          string          `json:"model"`
-	Messages       []chatMessage   `json:"messages"`
-	Temperature    float64         `json:"temperature"`
-	ResponseFormat *responseFormat `json:"response_format,omitempty"`
-}
-
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type responseFormat struct {
-	Type string `json:"type"`
-}
-
-// chatCompletionResponse is the OpenAI-compatible response body.
-type chatCompletionResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-		FinishReason string `json:"finish_reason"`
-	} `json:"choices"`
-	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
-	} `json:"usage"`
+// ToolContext provides capabilities for the ReAct loop to interact with the repository.
+type ToolContext interface {
+	SearchRepoCode(query string) (string, error)
+	ReadRepoFile(filePath string) (string, error)
 }
 
 type AIResponse struct {
@@ -47,65 +21,157 @@ type AIResponse struct {
 }
 
 // ReviewDiff sends a diff to an OpenAI-compatible API for code review and returns findings.
-func ReviewDiff(endpoint, model, apiKey, diff, agentsMD, promptExtra string) ([]Finding, error) {
-	systemPrompt, userPrompt := BuildPrompt(diff, agentsMD, promptExtra)
+func ReviewDiff(ctx ToolContext, endpoint, model, apiKey string, maxIters int, diff, agentsMD, promptExtra string) ([]Finding, error) {
+	systemPrompt, userPrompt := BuildPrompt(maxIters, diff, agentsMD, promptExtra)
 
-	reqBody := chatCompletionRequest{
-		Model: model,
-		Messages: []chatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
+	config := openai.DefaultConfig(apiKey)
+	if endpoint != "" {
+		config.BaseURL = strings.TrimRight(endpoint, "/")
+	}
+	client := openai.NewClientWithConfig(config)
+
+	tools := []openai.Tool{
+		{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        "search_repo_code",
+				Description: "Search the codebase for an exact string (uses git grep under the hood).",
+				Parameters: jsonschema.Definition{
+					Type: jsonschema.Object,
+					Properties: map[string]jsonschema.Definition{
+						"query": {
+							Type:        jsonschema.String,
+							Description: "The exact string or regex pattern to search for in the codebase.",
+						},
+					},
+					Required: []string{"query"},
+				},
+			},
 		},
-		Temperature:    0.1,
-		ResponseFormat: &responseFormat{Type: "json_object"},
+		{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        "read_repo_file",
+				Description: "Read the full contents of a specific file in the repository.",
+				Parameters: jsonschema.Definition{
+					Type: jsonschema.Object,
+					Properties: map[string]jsonschema.Definition{
+						"file_path": {
+							Type:        jsonschema.String,
+							Description: "The path of the file to read relative to the root of the repository.",
+						},
+					},
+					Required: []string{"file_path"},
+				},
+			},
+		},
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling request: %w", err)
+	messages := []openai.ChatCompletionMessage{
+		{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
+		{Role: openai.ChatMessageRoleUser, Content: userPrompt},
 	}
 
-	url := strings.TrimRight(endpoint, "/") + "/chat/completions"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	var findings []Finding
+	reqCtx := context.Background()
+	var totalPrompt, totalCompletion int
 
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("calling LLM API: %w", err)
-	}
-	defer resp.Body.Close()
+	for iter := 0; iter < maxIters; iter++ {
+		req := openai.ChatCompletionRequest{
+			Model:       model,
+			Messages:    messages,
+			Temperature: 0.1,
+			Tools:       tools,
+		}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading LLM response: %w", err)
+		resp, err := client.CreateChatCompletion(reqCtx, req)
+		if err != nil {
+			return nil, fmt.Errorf("LLM API error on iteration %d: %w", iter+1, err)
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, fmt.Errorf("LLM returned no choices")
+		}
+
+		totalPrompt += resp.Usage.PromptTokens
+		totalCompletion += resp.Usage.CompletionTokens
+
+		msg := resp.Choices[0].Message
+		messages = append(messages, msg)
+
+		if len(msg.ToolCalls) == 0 {
+			// No tools called, the loop finishes.
+			parsed, parseErr := parseFindings(msg.Content)
+			if parseErr != nil {
+				return nil, fmt.Errorf("parsing findings at end of loop: %w\nRaw LLM response:\n%s", parseErr, msg.Content)
+			}
+			findings = parsed
+			break
+		}
+
+		// Handle tool calls
+		for _, tc := range msg.ToolCalls {
+			var args map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+				messages = append(messages, openai.ChatCompletionMessage{
+					Role:       openai.ChatMessageRoleTool,
+					Content:    fmt.Sprintf("Error parsing arguments: %v", err),
+					Name:       tc.Function.Name,
+					ToolCallID: tc.ID,
+				})
+				continue
+			}
+
+			fmt.Printf("   🛠️ Executing tool %s...\n", tc.Function.Name)
+
+			var toolResult string
+			switch tc.Function.Name {
+			case "search_repo_code":
+				query, ok := args["query"].(string)
+				if !ok {
+					query = ""
+				}
+				res, err := ctx.SearchRepoCode(query)
+				if err != nil {
+					toolResult = fmt.Sprintf("Error executing search_repo_code: %v", err)
+				} else if res == "" {
+					toolResult = "No results found."
+				} else {
+					toolResult = res
+				}
+			case "read_repo_file":
+				filePath, ok := args["file_path"].(string)
+				if !ok {
+					filePath = ""
+				}
+				fmt.Printf("   📄 Reading file: %s\n", filePath)
+				res, err := ctx.ReadRepoFile(filePath)
+				if err != nil {
+					toolResult = fmt.Sprintf("Error executing read_repo_file: %v", err)
+				} else if res == "" {
+					toolResult = "File does not exist or is empty."
+				} else {
+					toolResult = res
+				}
+			default:
+				toolResult = fmt.Sprintf("Unknown tool %s", tc.Function.Name)
+			}
+
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				Content:    toolResult,
+				Name:       tc.Function.Name,
+				ToolCallID: tc.ID,
+			})
+		}
+
+		if iter == maxIters-1 {
+			fmt.Printf("⚠️ Reached max agent iterations (%d) without finishing.\n", maxIters)
+		}
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("LLM API error (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-
-	var chatResp chatCompletionResponse
-	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return nil, fmt.Errorf("parsing LLM response: %w", err)
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return nil, fmt.Errorf("LLM returned no choices")
-	}
-
-	content := chatResp.Choices[0].Message.Content
-	findings, err := parseFindings(content)
-	if err != nil {
-		return nil, fmt.Errorf("parsing findings: %w\n\nRaw LLM response:\n%s", err, content)
-	}
-
-	fmt.Printf("📊 Token usage: %d prompt + %d completion = %d total\n",
-		chatResp.Usage.PromptTokens, chatResp.Usage.CompletionTokens, chatResp.Usage.TotalTokens)
+	fmt.Printf("📊 Token usage (cumulative): %d prompt + %d completion = %d total\n",
+		totalPrompt, totalCompletion, totalPrompt+totalCompletion)
 
 	return findings, nil
 }
@@ -129,7 +195,6 @@ func parseFindings(content string) ([]Finding, error) {
 	}
 
 	content = strings.TrimSpace(content)
-
 
 	var aiResponse AIResponse
 	if err := json.Unmarshal([]byte(content), &aiResponse); err == nil {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -12,7 +13,8 @@ import (
 // ReviewContext abstracts the source of the diff and files (e.g., Bitbucket API vs local Git).
 type ReviewContext interface {
 	GetDiff() (string, error)
-	GetFileContent(fileName string) (string, error)
+	ReadRepoFile(filePath string) (string, error)
+	SearchRepoCode(query string) (string, error)
 }
 
 // bitbucketContext implements ReviewContext using the Bitbucket API.
@@ -37,8 +39,18 @@ func (b *bitbucketContext) GetDiff() (string, error) {
 	return bitbucket.GetDiff(b.client, b.prInfo)
 }
 
-func (b *bitbucketContext) GetFileContent(fileName string) (string, error) {
-	return bitbucket.GetFileContent(b.client, b.prInfo.BaseURL, b.repoFullName, b.commitRef, fileName)
+func (b *bitbucketContext) ReadRepoFile(filePath string) (string, error) {
+	return bitbucket.GetFileContent(b.client, b.prInfo.BaseURL, b.repoFullName, b.commitRef, filePath)
+}
+
+func (b *bitbucketContext) SearchRepoCode(query string) (string, error) {
+	searchURL := fmt.Sprintf("%s/workspaces/%s/search/code?search_query=%s", b.prInfo.BaseURL, b.prInfo.Workspace, url.QueryEscape(query))
+	body, err := b.client.GetRaw(searchURL)
+	if err != nil {
+		// Log but don't fail, bitbucket search might not be enabled or user might not have access
+		return "", fmt.Errorf("bitbucket code search failed: %w", err)
+	}
+	return string(body), nil
 }
 
 // gitPRContext implements ReviewContext using a local Git repository for a PR.
@@ -68,7 +80,7 @@ func (g *gitPRContext) GetDiff() (string, error) {
 	return string(out), nil
 }
 
-func (g *gitPRContext) GetFileContent(fileName string) (string, error) {
+func (g *gitPRContext) ReadRepoFile(fileName string) (string, error) {
 	refPath := fmt.Sprintf("%s:%s", g.headCommit, fileName)
 	cmd := exec.Command("git", "show", refPath)
 	cmd.Dir = g.path
@@ -80,6 +92,20 @@ func (g *gitPRContext) GetFileContent(fileName string) (string, error) {
 			return "", nil
 		}
 		return "", fmt.Errorf("git show failed on %s: %v\nOutput: %s", refPath, err, outStr)
+	}
+	return string(out), nil
+}
+
+func (g *gitPRContext) SearchRepoCode(query string) (string, error) {
+	cmd := exec.Command("git", "grep", "-n", "-I", query, g.headCommit)
+	cmd.Dir = g.path
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := string(out)
+		if strings.Contains(outStr, "fatal") || strings.Contains(outStr, "error") {
+			return "", fmt.Errorf("git grep failed: %v\nOutput: %s", err, outStr)
+		}
+		return "", nil // Exit code 1 means no matches
 	}
 	return string(out), nil
 }
@@ -104,7 +130,7 @@ func (g *gitStagedContext) GetDiff() (string, error) {
 	return string(out), nil
 }
 
-func (g *gitStagedContext) GetFileContent(fileName string) (string, error) {
+func (g *gitStagedContext) ReadRepoFile(fileName string) (string, error) {
 	// For staged files, we can just view what's staged in the index index: git show :<file>
 	refPath := fmt.Sprintf(":%s", fileName)
 	cmd := exec.Command("git", "show", refPath)
@@ -116,6 +142,20 @@ func (g *gitStagedContext) GetFileContent(fileName string) (string, error) {
 			return "", nil
 		}
 		return "", fmt.Errorf("git show %s failed: %v\nOutput: %s", refPath, err, outStr)
+	}
+	return string(out), nil
+}
+
+func (g *gitStagedContext) SearchRepoCode(query string) (string, error) {
+	cmd := exec.Command("git", "grep", "-n", "-I", query)
+	cmd.Dir = g.path
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := string(out)
+		if strings.Contains(outStr, "fatal") || strings.Contains(outStr, "error") {
+			return "", fmt.Errorf("git grep failed: %v\nOutput: %s", err, outStr)
+		}
+		return "", nil
 	}
 	return string(out), nil
 }
