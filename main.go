@@ -83,6 +83,7 @@ token) are stored in your system keyring.`,
 	flags.StringVar(&cfg.Path, "path", cfg.Path, "Path to local repository (default: .)")
 	flags.BoolVar(&cfg.Switch, "switch", cfg.Switch, "Checkout and pull PR branch locally before review (requires --path)")
 	flags.IntVar(&cfg.MaxReActIterations, "max-react-iters", cfg.MaxReActIterations, "Maximum iterations for the agentic ReAct loop")
+	flags.IntVar(&cfg.ReadLineLimit, "read-line-limit", cfg.ReadLineLimit, "Maximum lines returned by read_repo_file tool per call")
 	flags.BoolVar(&cfg.Pending, "pending", cfg.Pending, "Include \"pending\": true in comment payload")
 	flags.BoolVar(&cfg.DryRun, "dry-run", cfg.DryRun, "Print findings without posting comments to Bitbucket")
 
@@ -233,7 +234,7 @@ func run(cfg *config.Config, prURL string) error {
 
 	// Send to LLM for review
 	fmt.Printf("🤖 Sending diff to %s (model: %s) with max %d iterations...\n", cfg.ModelEndpoint, cfg.Model, cfg.MaxReActIterations)
-	findings, err := reviewer.ReviewDiff(ctx, cfg.ModelEndpoint, cfg.Model, cfg.APIKey, cfg.MaxReActIterations, diff, agentsMD, cfg.PromptExtra)
+	findings, err := reviewer.ReviewDiff(ctx, cfg.ModelEndpoint, cfg.Model, cfg.APIKey, cfg.MaxReActIterations, cfg.ReadLineLimit, diff, agentsMD, cfg.PromptExtra)
 	if err != nil {
 		return fmt.Errorf("LLM review failed: %w", err)
 	}

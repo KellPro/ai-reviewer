@@ -16,6 +16,7 @@ type Config struct {
 	APIKey             string `json:"-"` // stored in keyring, never in file
 	PromptExtra        string `json:"prompt_extra,omitempty"`
 	MaxReActIterations int    `json:"max_react_iters,omitempty"`
+	ReadLineLimit      int    `json:"read_line_limit,omitempty"`
 
 	// Bitbucket auth
 	BBWorkspace string `json:"bb_workspace,omitempty"`
@@ -49,6 +50,7 @@ func DefaultConfig() *Config {
 		Path:               ".",
 		Switch:             false,
 		MaxReActIterations: 10,
+		ReadLineLimit:      200,
 	}
 
 	// Layer: config file
@@ -82,6 +84,13 @@ func DefaultConfig() *Config {
 			cfg.MaxReActIterations = parsed
 		} else {
 			cfg.MaxReActIterations = 10
+		}
+	}
+	if v := os.Getenv("AI_REVIEWER_READ_LINE_LIMIT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			cfg.ReadLineLimit = parsed
+		} else {
+			cfg.ReadLineLimit = 200
 		}
 	}
 	if v := os.Getenv("BITBUCKET_WORKSPACE"); v != "" {
@@ -148,6 +157,9 @@ func mergeConfigFile(base, file *Config) {
 	}
 	if file.MaxReActIterations != 0 {
 		base.MaxReActIterations = file.MaxReActIterations
+	}
+	if file.ReadLineLimit != 0 {
+		base.ReadLineLimit = file.ReadLineLimit
 	}
 	if file.BBWorkspace != "" {
 		base.BBWorkspace = file.BBWorkspace

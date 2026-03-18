@@ -21,8 +21,8 @@ type AIResponse struct {
 }
 
 // ReviewDiff sends a diff to an OpenAI-compatible API for code review and returns findings.
-func ReviewDiff(ctx ToolContext, endpoint, model, apiKey string, maxIters int, diff, agentsMD, promptExtra string) ([]Finding, error) {
-	systemPrompt, userPrompt := BuildPrompt(maxIters, diff, agentsMD, promptExtra)
+func ReviewDiff(ctx ToolContext, endpoint, model, apiKey string, maxIters, readLineLimit int, diff, agentsMD, promptExtra string) ([]Finding, error) {
+	systemPrompt, userPrompt := BuildPrompt(maxIters, readLineLimit, diff, agentsMD, promptExtra)
 
 	config := openai.DefaultConfig(apiKey)
 	if endpoint != "" {
@@ -60,8 +60,12 @@ func ReviewDiff(ctx ToolContext, endpoint, model, apiKey string, maxIters int, d
 							Type:        jsonschema.String,
 							Description: "The path of the file to read relative to the root of the repository.",
 						},
+						"start_line": {
+							Type:        jsonschema.Integer,
+							Description: "The 1-indexed line number to start reading from.",
+						},
 					},
-					Required: []string{"file_path"},
+					Required: []string{"file_path", "start_line"},
 				},
 			},
 		},
@@ -144,14 +148,46 @@ func ReviewDiff(ctx ToolContext, endpoint, model, apiKey string, maxIters int, d
 				if !ok {
 					filePath = ""
 				}
-				fmt.Printf("   📄 Reading file: %s\n", filePath)
+				
+				startLine := 1
+				switch v := args["start_line"].(type) {
+				case float64:
+					startLine = int(v)
+				case int:
+					startLine = v
+				}
+				if startLine < 1 {
+					startLine = 1
+				}
+
+				fmt.Printf("   📄 Reading file: %s (starting line %d)\n", filePath, startLine)
 				res, err := ctx.ReadRepoFile(filePath)
 				if err != nil {
 					toolResult = fmt.Sprintf("Error executing read_repo_file: %v", err)
 				} else if res == "" {
 					toolResult = "File does not exist or is empty."
 				} else {
-					toolResult = res
+					lines := strings.Split(res, "\n")
+					totalLines := len(lines)
+					
+					if startLine > totalLines {
+						toolResult = fmt.Sprintf("Error: start_line %d is beyond the end of the file (total lines: %d).", startLine, totalLines)
+					} else {
+						endLine := startLine + readLineLimit - 1
+						if endLine > totalLines {
+							endLine = totalLines
+						}
+						
+						snippet := strings.Join(lines[startLine-1:endLine], "\n")
+						
+						if endLine < totalLines {
+							toolResult = fmt.Sprintf("Showing lines %d to %d (out of %d total lines).\nTo read more, call this tool again with start_line=%d.\n\n%s", 
+								startLine, endLine, totalLines, endLine + 1, snippet)
+						} else {
+							toolResult = fmt.Sprintf("Showing lines %d to %d (End of file, %d total lines).\n\n%s", 
+								startLine, endLine, totalLines, snippet)
+						}
+					}
 				}
 			default:
 				toolResult = fmt.Sprintf("Unknown tool %s", tc.Function.Name)

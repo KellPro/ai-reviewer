@@ -8,7 +8,7 @@ import (
 )
 
 // BuildPrompt constructs the system and user messages for the LLM code review.
-func BuildPrompt(maxIters int, diff, agentsMD, promptExtra string) (system, user string) {
+func BuildPrompt(maxIters, readLineLimit int, diff, agentsMD, promptExtra string) (system, user string) {
 	// Format the diff with line numbers for added lines
 	formattedDiff := formatDiffWithLineNumbers(diff)
 	var sb strings.Builder
@@ -56,10 +56,11 @@ Severity levels:
 
 You now have access to tools. If you are unsure how a modified function is used, use 'search_repo_code'. If you need to see the full context of a file rather than just the diff snippet, use 'read_repo_file'. Gather your context first, and only output the final {"issues": []} JSON object when you are completely finished investigating.
 NOTE: You are strictly limited to a maximum of %d loop iterations before you must produce your final list of issues, so gather your context efficiently.
+NOTE: The 'read_repo_file' tool is restricted to returning a maximum of %d lines per call. You must provide a 'start_line'. To read further into a file, call the tool multiple times, adjusting 'start_line'.
 
 Return ONLY the raw JSON object with an "issues" array listing all issues with the code when finished. No preamble, no explanation, and NO markdown ticks`)
 
-	systemString := fmt.Sprintf(sb.String(), maxIters)
+	systemString := fmt.Sprintf(sb.String(), maxIters, readLineLimit)
 
 	if promptExtra != "" {
 		systemString += "\n\nADDITIONAL REVIEW DIRECTIVES:\n" + promptExtra
