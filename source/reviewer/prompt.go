@@ -3,10 +3,14 @@ package reviewer
 import (
 	"fmt"
 	"strings"
+
+	"github.com/KellPro/ai-reviewer/source/parser"
 )
 
 // BuildPrompt constructs the system and user messages for the LLM code review.
 func BuildPrompt(diff, agentsMD, promptExtra string) (system, user string) {
+	// Format the diff with line numbers for added lines
+	formattedDiff := formatDiffWithLineNumbers(diff)
 	var sb strings.Builder
 
 	sb.WriteString(`You are an expert code reviewer. You will be given a unified diff from a pull request.
@@ -23,6 +27,7 @@ IMPORTANT RULES:
 3. Do NOT comment on style-only issues like formatting, naming conventions, or whitespace unless they cause bugs.
 4. Do NOT comment on deleted lines.
 5. If you find no issues, return a JSON object with an empty array: {"issues": []}
+6. ALWAYS go off the line number explicitly supplied in the diff.
 
 Return your findings as a valid JSON object containing an "issues" array containing all the issues found with the following structure.
 CRITICAL: Your output MUST start with '{' and end with '}'. Do not use markdown code blocks.
@@ -65,9 +70,34 @@ Return ONLY the raw JSON object with an "issues" array listing all issues with t
 		userSB.WriteString(agentsMD)
 		userSB.WriteString("\n\n---\n\n")
 	}
-	userSB.WriteString(fmt.Sprintf("## Pull Request Diff\n\n```diff\n%s\n```", diff))
+	userSB.WriteString(fmt.Sprintf("## Pull Request Diff\n\n```diff\n%s\n```", formattedDiff))
 
 	user = userSB.String()
 
 	return system, user
+}
+
+// formatDiffWithLineNumbers parses the diff and adds line numbers to added lines.
+func formatDiffWithLineNumbers(diff string) string {
+	files := parser.ParseUnifiedDiff(diff)
+	var result strings.Builder
+
+	for _, file := range files {
+		result.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", file.Path, file.Path))
+		for _, hunk := range file.Hunks {
+			result.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", hunk.NewStart, hunk.NewCount, hunk.NewStart, hunk.NewCount))
+			for _, line := range hunk.Lines {
+				switch line.Type {
+				case "add":
+					result.WriteString(fmt.Sprintf("+%d: %s\n", line.Number, line.Text))
+				case "delete":
+					result.WriteString(fmt.Sprintf("-%s\n", line.Text))
+				case "context":
+					result.WriteString(fmt.Sprintf(" %s\n", line.Text))
+				}
+			}
+		}
+	}
+
+	return result.String()
 }
