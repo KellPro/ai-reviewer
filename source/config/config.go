@@ -24,6 +24,8 @@ type Config struct {
 	Platform string `json:"-"`
 	Pending  bool   `json:"pending"`
 	DryRun   bool   `json:"-"` // never persisted
+	Path     string `json:"path,omitempty"`
+	Switch   bool   `json:"switch,omitempty"`
 }
 
 // ConfigFilePath returns the path to the config file (~/.config/ai-reviewer.json).
@@ -42,6 +44,8 @@ func DefaultConfig() *Config {
 		Platform:      "cloud",
 		Pending:       true,
 		DryRun:        false,
+		Path:          ".",
+		Switch:        false,
 	}
 
 	// Layer: config file
@@ -138,6 +142,10 @@ func mergeConfigFile(base, file *Config) {
 	if file.BBEmail != "" {
 		base.BBEmail = file.BBEmail
 	}
-	// Pending is a bool — always apply from file if the file was loaded
+	if file.Path != "" {
+		base.Path = file.Path
+	}
+	// Pending and Switch are bools — always apply from file if the file was loaded
 	base.Pending = file.Pending
+	base.Switch = file.Switch
 }

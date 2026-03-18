@@ -1,18 +1,19 @@
 # AI Reviewer
 
-A Go CLI tool that fetches a Bitbucket Cloud Pull Request diff, sends it to an OpenAI-compatible LLM for an automated code review, and posts the findings as inline comments on the PR in Bitbucket in review mode.
+A Go CLI tool that can review local staged changes or fetch a Bitbucket Cloud Pull Request diff. It sends the diff to an OpenAI-compatible LLM for an automated code review, and can post findings as inline comments on the PR in Bitbucket or print them locally.
 This way you can review all the LLM's findings in the Bitbucket UI and approve, reject, or edit them before posting a review.
 
-The tool only comments on added or modified lines, supports custom review directives, and can incorporate repository-specific guidelines if an `AGENTS.md` file exists in the source branch.
+The tool only comments on added or modified lines, supports custom review directives, and can incorporate repository-specific guidelines if an `AGENTS.md` file exists in the project.
 
 ## Features
 
 - **Automated Code Review**: Uses an LLM to find bugs, security vulnerabilities, and code quality issues.
 - **Bitbucket Cloud Integration**: Fetches PR diffs and metadata directly from Bitbucket.
-- **Smart Commenting**: Posts findings as inline comments attached to specific lines of code. Validates that findings correspond to actual additions in the PR diff.
-- **Repository Context**: Automatically reads `AGENTS.md` from the PR's source branch to understand repository-specific rules.
+- **Local Repository Support**: Review your staged changes locally before committing, or use local Git instead of the API for PR reviews.
+- **Smart Commenting**: Posts findings as inline comments attached to specific lines of code. Validates that findings correspond to actual additions in the diff.
+- **Repository Context**: Automatically reads `AGENTS.md` from the PR's source branch or local repository to understand repository-specific rules.
 - **Draft Comments**: Posts comments with `"pending": true` (where supported by the Bitbucket instance).
-- **Dry Run Mode**: Print findings to the terminal without posting them to Bitbucket.
+- **Dry Run Mode**: Print findings to the terminal without posting them to Bitbucket (automatically enabled for local-only reviews).
 
 ## Installation
 
@@ -78,7 +79,7 @@ Set `BITBUCKET_EMAIL` to your Atlassian email address, and set `BITBUCKET_TOKEN`
 
 ## Usage
 
-Provide the Bitbucket Cloud PR as the only positional argument. This can be a full URL or a shorthand `repo/pr-number` (requires a default workspace to be configured).
+Provide the Bitbucket Cloud PR as an argument, or run it without arguments inside a local git repository to review staged changes.
 
 ```bash
 # Basic usage with full URL
@@ -86,6 +87,15 @@ ai-reviewer https://bitbucket.org/my-org/my-repo/pull-requests/123
 
 # Shorthand usage (after running 'ai-reviewer init' or setting BB workspace)
 ai-reviewer my-repo/123
+
+# Contextual PR shorthand (if inside the PR's local git repository)
+ai-reviewer 123
+
+# Review local staged changes (dry-run mode is automatically inferred)
+ai-reviewer
+
+# Checkout the PR branch locally and review it faster using the local filesystem
+ai-reviewer --switch 123
 
 # Dry run: see the LLM's review without posting comments to Bitbucket
 ai-reviewer --dry-run my-repo/123
@@ -101,9 +111,9 @@ ai-reviewer --pending=false my-repo/123
 
 Run `ai-reviewer --help` to see all available flags:
 
-```
+```text
 Usage:
-  ai-reviewer <pr-url | repo/pr-number> [flags]
+  ai-reviewer [pr-url | repo/pr-number | pr-number] [flags]
   ai-reviewer [command]
 
 Available Commands:
@@ -119,8 +129,10 @@ Flags:
   -h, --help                     help for ai-reviewer
       --model string             Model name to use for review (default "grok-4-1-fast-reasoning")
       --model-endpoint string    OpenAI-compatible API base URL (default "https://api.x.ai/v1")
+      --path string              Path to local repository (default ".")
       --pending                  Include "pending": true in comment payload (default true)
       --prompt-extra string      Additional review directives appended to the prompt
+      --switch                   Checkout and pull PR branch locally before review (requires --path)
 ```
 
 ## How It Works under the Hood
